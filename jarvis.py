@@ -1,6 +1,3 @@
-# ═══════════════════════════════════════════════════════════════
-#  IMPORTS
-# ═══════════════════════════════════════════════════════════════
 import os, sys, time, threading, subprocess, webbrowser
 import datetime, platform, shutil, json, socket, re
 import winreg, ctypes, glob
@@ -60,19 +57,54 @@ class Jarvis:
         self.engine.say(text)
         self.engine.runAndWait()
 
+    def _check_microphone(self) -> bool:
+        """Check if any microphone is available."""
+        try:
+            mics = sr.Microphone.list_microphone_names()
+            if not mics:
+                print("[ERROR] No microphone found. Connect a mic and restart.")
+                return False
+            return True
+        except Exception as e:
+            print(f"[ERROR] Microphone check failed: {e}")
+            return False
+
     def listen(self, timeout=7, phrase_limit=12) -> str:
-        with sr.Microphone() as src:
-            print("\n[MIC] Listening...")
-            self.rec.adjust_for_ambient_noise(src, duration=0.4)
+        # ── Keyboard fallback if no mic ──────────────────────
+        if not self._check_microphone():
             try:
-                audio = self.rec.listen(src, timeout=timeout, phrase_time_limit=phrase_limit)
-                text  = self.rec.recognize_google(audio, language="en-IN")
-                print(f"[YOU] {text}")
-                return text.lower()
-            except sr.WaitTimeoutError:   return ""
-            except sr.UnknownValueError:  return ""
-            except sr.RequestError:
-                self.speak("Speech service unavailable.")
+                user_input = input("[TYPE CMD] > ").strip()
+                return user_input.lower()
+            except (EOFError, KeyboardInterrupt):
+                return ""
+
+        # ── Microphone mode ──────────────────────────────────
+        try:
+            mic = sr.Microphone()
+            with mic as src:
+                print("\n[MIC] Listening...")
+                try:
+                    self.rec.adjust_for_ambient_noise(src, duration=0.4)
+                except AssertionError:
+                    pass   # stream issue — skip noise adjustment
+                try:
+                    audio = self.rec.listen(src, timeout=timeout, phrase_time_limit=phrase_limit)
+                    text  = self.rec.recognize_google(audio, language="en-IN")
+                    print(f"[YOU] {text}")
+                    return text.lower()
+                except sr.WaitTimeoutError:   return ""
+                except sr.UnknownValueError:  return ""
+                except sr.RequestError:
+                    self.speak("Speech service unavailable.")
+                    return ""
+        except (OSError, AttributeError) as e:
+            print(f"[MIC ERROR] {e}")
+            print("[FALLBACK] Microphone unavailable — switching to keyboard input.")
+            print("[HINT] Fix: pip install pipwin && pipwin install pyaudio")
+            try:
+                user_input = input("[TYPE CMD] > ").strip()
+                return user_input.lower()
+            except (EOFError, KeyboardInterrupt):
                 return ""
 
     # ─────────────────────────────────────────────────────────
